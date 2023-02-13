@@ -4,25 +4,26 @@ import (
 	"testing"
 	"time"
 
-	storetypes "github.com/cosmos/cosmos-sdk/store/types"
-
-	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
-	db "github.com/cometbft/cometbft-db"
-	"github.com/cometbft/cometbft/libs/log"
+	sdkstore "cosmossdk.io/core/store"
+	"cosmossdk.io/log"
+	"cosmossdk.io/store"
+	storemetrics "cosmossdk.io/store/metrics"
+	storetypes "cosmossdk.io/store/types"
 	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
+	dbm "github.com/cosmos/cosmos-db"
 	"github.com/cosmos/cosmos-sdk/codec"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
+	"github.com/cosmos/cosmos-sdk/runtime"
 	"github.com/cosmos/cosmos-sdk/std"
-	"github.com/cosmos/cosmos-sdk/store"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/stretchr/testify/require"
 )
 
-func createMinTestInput(t *testing.T) (sdk.Context, *codec.ProtoCodec, *storetypes.KVStoreKey) { //nolint:unused
-	storeKey := sdk.NewKVStoreKey(wasmtypes.StoreKey)
+func createMinTestInput(t *testing.T) (sdk.Context, *codec.ProtoCodec, sdkstore.KVStoreService) {
+	storeKey := storetypes.NewKVStoreKey("testing")
 	logger := log.NewNopLogger()
-	db := db.NewMemDB()
-	ms := store.NewCommitMultiStore(db)
+	db := dbm.NewMemDB()
+	ms := store.NewCommitMultiStore(db, logger, storemetrics.NewNoOpMetrics())
 	ms.MountStoreWithDB(storeKey, storetypes.StoreTypeIAVL, db)
 	require.NoError(t, ms.LoadLatestVersion())
 
@@ -37,5 +38,5 @@ func createMinTestInput(t *testing.T) (sdk.Context, *codec.ProtoCodec, *storetyp
 	std.RegisterInterfaces(interfaceRegistry)
 	std.RegisterLegacyAminoCodec(legacyAmino)
 
-	return ctx, marshaler, storeKey
+	return ctx, marshaler, runtime.NewKVStoreService(storeKey)
 }

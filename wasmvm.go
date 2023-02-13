@@ -27,7 +27,7 @@ func NewTraceWasmVm(other wasmtypes.WasmEngine) wasmtypes.WasmEngine {
 }
 
 func (t TraceWasmVm) Create(code cosmwasm.WasmCode) (cosmwasm.Checksum, error) {
-	return t.other.StoreCode(code)
+	return t.other.Create(code)
 }
 
 func (t TraceWasmVm) AnalyzeCode(checksum cosmwasm.Checksum) (*wasmvmtypes.AnalysisReport, error) {

@@ -3,13 +3,16 @@ package tracing
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
+
+	"cosmossdk.io/core/appmodule"
 
 	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cosmos/cosmos-sdk/codec"
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	"github.com/cosmos/cosmos-sdk/types/module"
+	sdkmodule "github.com/cosmos/cosmos-sdk/types/module"
 	"github.com/cosmos/gogoproto/grpc"
 	"github.com/cosmos/gogoproto/proto"
 	"github.com/opentracing/opentracing-go"
@@ -24,193 +27,182 @@ type ModuleManager interface {
 	SetOrderEndBlockers(moduleNames ...string)
 	SetOrderMigrations(moduleNames ...string)
 	RegisterInvariants(ir sdk.InvariantRegistry)
-	RegisterServices(cfg module.Configurator)
-	InitGenesis(ctx sdk.Context, cdc codec.JSONCodec, genesisData map[string]json.RawMessage) abci.ResponseInitChain
-	ExportGenesis(ctx sdk.Context, cdc codec.JSONCodec) map[string]json.RawMessage
-	RunMigrations(ctx sdk.Context, cfg module.Configurator, fromVM module.VersionMap) (module.VersionMap, error)
-	BeginBlock(ctx sdk.Context, req abci.RequestBeginBlock) abci.ResponseBeginBlock
-	EndBlock(ctx sdk.Context, req abci.RequestEndBlock) abci.ResponseEndBlock
-	GetVersionMap() module.VersionMap
+	RegisterServices(cfg sdkmodule.Configurator) error
+	InitGenesis(ctx sdk.Context, cdc codec.JSONCodec, genesisData map[string]json.RawMessage) (*abci.ResponseInitChain, error)
+	ExportGenesis(ctx sdk.Context, cdc codec.JSONCodec) (map[string]json.RawMessage, error)
+	RunMigrations(ctx sdk.Context, cfg sdkmodule.Configurator, fromVM sdkmodule.VersionMap) (sdkmodule.VersionMap, error)
+	BeginBlock(ctx sdk.Context) (sdk.BeginBlock, error)
+	EndBlock(ctx sdk.Context) (sdk.EndBlock, error)
+	Precommit(ctx sdk.Context) error
+	PrepareCheckState(ctx sdk.Context) error
+	GetVersionMap() sdkmodule.VersionMap
 	ModuleNames() []string
 	GetModules() map[string]any
 	GetConsensusVersion(module string) uint64
-	ExportGenesisForModules(ctx sdk.Context, cdc codec.JSONCodec, modulesToExport []string) map[string]json.RawMessage
 }
 
 const (
-	ABCIBeginBlockOperationName   = "abci_begin_block"
-	ABCIEndBlockOperationName     = "abci_end_block"
-	ModuleBeginBlockOperationName = "module_begin_block"
-	ModuleEndBlockOperationName   = "module_end_block"
+	BeginBlockOperationName        = "begin_block"
+	ABCIEndBlockOperationName      = "abci_end_block"
+	PrepareCheckStateOperationName = "prepare_check_state"
+	PrecommitOperationName         = "precommit"
+	ModuleBeginBlockOperationName  = "module_begin_block"
+	ModuleEndBlockOperationName    = "module_end_block"
 )
 
 var _ ModuleManager = &TraceModuleManager{}
 
 type TraceModuleManager struct {
-	other *module.Manager
-	cdc   codec.Codec
+	*sdkmodule.Manager
+	cdc codec.Codec
 }
 
-func NewTraceModuleManager(other *module.Manager, cdc codec.Codec) *TraceModuleManager {
-	return &TraceModuleManager{other: other, cdc: cdc}
+// NewTraceModuleManager constructor
+func NewTraceModuleManager(other *sdkmodule.Manager, cdc codec.Codec) *TraceModuleManager {
+	return &TraceModuleManager{Manager: other, cdc: cdc}
 }
 
-func (t TraceModuleManager) SetOrderInitGenesis(moduleNames ...string) {
-	t.other.SetOrderInitGenesis(moduleNames...)
+func (t TraceModuleManager) Precommit(rootCtx sdk.Context) (err error) {
+	return traceModuleCall[appmodule.HasPrecommit](rootCtx, PrecommitOperationName, t, t.Manager.OrderPrecommiters, func(ctx sdk.Context, module appmodule.HasPrecommit) error {
+		return module.Precommit(ctx)
+	})
 }
 
-func (t TraceModuleManager) SetOrderExportGenesis(moduleNames ...string) {
-	t.other.SetOrderExportGenesis(moduleNames...)
+func (t TraceModuleManager) PrepareCheckState(rootCtx sdk.Context) error {
+	return traceModuleCall[appmodule.HasPrepareCheckState](rootCtx, PrepareCheckStateOperationName, t, t.Manager.OrderPrepareCheckStaters, func(ctx sdk.Context, module appmodule.HasPrepareCheckState) error {
+		return module.PrepareCheckState(ctx)
+	})
 }
 
-func (t TraceModuleManager) SetOrderBeginBlockers(moduleNames ...string) {
-	t.other.SetOrderBeginBlockers(moduleNames...)
+func (t TraceModuleManager) RegisterServices(cfg sdkmodule.Configurator) error {
+	return t.Manager.RegisterServices(NewTraceModuleConfigurator(t.cdc, cfg))
 }
 
-func (t TraceModuleManager) SetOrderEndBlockers(moduleNames ...string) {
-	t.other.SetOrderEndBlockers(moduleNames...)
-}
-
-func (t TraceModuleManager) SetOrderMigrations(moduleNames ...string) {
-	t.other.SetOrderMigrations(moduleNames...)
-}
-
-func (t TraceModuleManager) RegisterInvariants(ir sdk.InvariantRegistry) {
-	t.other.RegisterInvariants(ir)
-}
-
-func (t TraceModuleManager) RegisterServices(cfg module.Configurator) {
-	t.other.RegisterServices(NewTraceModuleConfigurator(t.cdc, cfg))
-}
-
-func (t TraceModuleManager) InitGenesis(ctx sdk.Context, cdc codec.JSONCodec, genesisData map[string]json.RawMessage) abci.ResponseInitChain {
-	return t.other.InitGenesis(ctx, cdc, genesisData)
-}
-
-func (t TraceModuleManager) ExportGenesis(ctx sdk.Context, cdc codec.JSONCodec) map[string]json.RawMessage {
-	return t.other.ExportGenesis(ctx, cdc)
-}
-
-func (t TraceModuleManager) RunMigrations(rootCtx sdk.Context, cfg module.Configurator, fromVM module.VersionMap) (migrations module.VersionMap, err error) {
-	DoWithTracing(rootCtx, ABCIBeginBlockOperationName, writesOnly, func(ctx sdk.Context, span opentracing.Span) error {
-		migrations, err = t.other.RunMigrations(ctx, cfg, fromVM)
+func (t TraceModuleManager) RunMigrations(rootCtx sdk.Context, cfg sdkmodule.Configurator, fromVM sdkmodule.VersionMap) (migrations sdkmodule.VersionMap, err error) {
+	DoWithTracing(rootCtx, BeginBlockOperationName, nothing, func(ctx sdk.Context, span opentracing.Span) error {
+		migrations, err = t.Manager.RunMigrations(ctx, cfg, fromVM)
 		return err
 	})
 	return migrations, err
 }
 
-func (t TraceModuleManager) BeginBlock(rootCtx sdk.Context, req abci.RequestBeginBlock) abci.ResponseBeginBlock {
-	if !tracerEnabled {
-		return t.other.BeginBlock(rootCtx, req)
-	}
-
-	rootCtx = rootCtx.WithEventManager(sdk.NewEventManager())
-
-	DoWithTracing(rootCtx, ABCIBeginBlockOperationName, nothing, func(parentCtx sdk.Context, span opentracing.Span) error {
-		// run by order defined as in the sdk
-		for _, moduleName := range t.other.OrderBeginBlockers {
-			module, ok := t.other.Modules[moduleName].(module.BeginBlockAppModule)
+func traceModuleCall[T any](rootCtx sdk.Context, traceName string, t TraceModuleManager, order []string, f func(ctx sdk.Context, module T) error) (retErr error) {
+	DoWithTracing(rootCtx, "root_"+traceName, nothing, func(parentCtx sdk.Context, span opentracing.Span) error {
+		for _, moduleName := range order {
+			module, ok := t.Manager.Modules[moduleName].(T)
 			if !ok {
 				continue
 			}
-			DoWithTracing(parentCtx, ModuleBeginBlockOperationName, writesOnly, func(workCtx sdk.Context, span opentracing.Span) error {
+			DoWithTracing(parentCtx, "module"+traceName, writesOnly, func(workCtx sdk.Context, span opentracing.Span) error {
 				span.SetTag(tagModule, moduleName)
-				module.BeginBlock(workCtx, req)
-				return nil
+				retErr = f(workCtx, module)
+				return retErr
 			})
 		}
-		return nil
+		return retErr
 	})
-
-	return abci.ResponseBeginBlock{
-		Events: rootCtx.EventManager().ABCIEvents(),
-	}
+	return retErr
 }
 
-func (t TraceModuleManager) EndBlock(rootCtx sdk.Context, req abci.RequestEndBlock) abci.ResponseEndBlock {
+func (t TraceModuleManager) BeginBlock(rootCtx sdk.Context) (sdk.BeginBlock, error) {
 	if !tracerEnabled {
-		return t.other.EndBlock(rootCtx, req)
+		return t.Manager.BeginBlock(rootCtx)
 	}
 
 	rootCtx = rootCtx.WithEventManager(sdk.NewEventManager())
-	validatorUpdates := []abci.ValidatorUpdate{} // nolint
+	err := traceModuleCall[appmodule.HasBeginBlocker](rootCtx, BeginBlockOperationName, t, t.Manager.OrderBeginBlockers, func(ctx sdk.Context, module appmodule.HasBeginBlocker) error {
+		return module.BeginBlock(ctx)
+	})
+	return sdk.BeginBlock{
+		Events: rootCtx.EventManager().ABCIEvents(),
+	}, err
+}
+
+func (t TraceModuleManager) EndBlock(rootCtx sdk.Context) (sdk.EndBlock, error) {
+	if !tracerEnabled {
+		return t.Manager.EndBlock(rootCtx)
+	}
+
+	rootCtx = rootCtx.WithEventManager(sdk.NewEventManager())
+	var (
+		validatorUpdates []abci.ValidatorUpdate
+		retErr           error
+	)
 	DoWithTracing(rootCtx, ABCIEndBlockOperationName, nothing, func(parentCtx sdk.Context, span opentracing.Span) error {
-		for _, moduleName := range t.other.OrderEndBlockers {
-			module, ok := t.other.Modules[moduleName].(module.EndBlockAppModule)
-			if !ok {
+		for _, moduleName := range t.Manager.OrderEndBlockers {
+			if module, ok := t.Manager.Modules[moduleName].(appmodule.HasEndBlocker); ok {
+				DoWithTracing(parentCtx, "module_end_block", writesOnly, func(workCtx sdk.Context, span opentracing.Span) error {
+					span.SetTag(tagModule, moduleName)
+					retErr = module.EndBlock(workCtx)
+					return retErr
+				})
+			} else if module, ok := t.Manager.Modules[moduleName].(sdkmodule.HasABCIEndBlock); ok {
+				DoWithTracing(parentCtx, "module_end_block", writesOnly, func(workCtx sdk.Context, span opentracing.Span) error {
+					span.SetTag(tagModule, moduleName)
+
+					var moduleValUpdates []abci.ValidatorUpdate
+					moduleValUpdates, retErr = module.EndBlock(workCtx)
+					if retErr != nil {
+						return retErr
+					}
+					// use these validator updates if provided, the module manager assumes
+					// only one module will update the validator set
+					if len(moduleValUpdates) > 0 {
+						span.SetTag(tagValsetUpdate, true)
+						span.LogFields(safeLogField(logValsetDiff, toJson(moduleValUpdates)))
+
+						if len(validatorUpdates) > 0 {
+							retErr = errors.New("validator EndBlock updates already set by a previous module")
+							return retErr
+						}
+						for _, updates := range moduleValUpdates {
+							validatorUpdates = append(validatorUpdates, abci.ValidatorUpdate{PubKey: updates.PubKey, Power: updates.Power})
+						}
+					}
+					return retErr
+				})
+			} else {
 				continue
 			}
-			DoWithTracing(parentCtx, ModuleEndBlockOperationName, writesOnly, func(workCtx sdk.Context, span opentracing.Span) error {
-				span.SetTag(tagModule, moduleName)
-
-				moduleValUpdates := module.EndBlock(workCtx, req)
-				span.LogFields(safeLogField(logValsetDiff, toJson(moduleValUpdates)))
-				// use these validator updates if provided, the module manager assumes
-				// only one module will update the validator set
-				if len(moduleValUpdates) > 0 {
-					if len(validatorUpdates) > 0 {
-						panic("validator EndBlock updates already set by a previous module")
-					}
-
-					validatorUpdates = moduleValUpdates
-					span.SetTag(tagValsetUpdate, true)
-				}
-				return nil
-			})
 		}
-		return nil
+		return retErr
 	})
-
-	return abci.ResponseEndBlock{
+	if retErr != nil {
+		return sdk.EndBlock{}, retErr
+	}
+	return sdk.EndBlock{
 		ValidatorUpdates: validatorUpdates,
 		Events:           rootCtx.EventManager().ABCIEvents(),
-	}
+	}, nil
 }
 
-func (t TraceModuleManager) GetVersionMap() module.VersionMap {
-	return t.other.GetVersionMap()
+func (t TraceModuleManager) GetVersionMap() sdkmodule.VersionMap {
+	return t.Manager.GetVersionMap()
 }
 
 func (t TraceModuleManager) GetModules() map[string]any {
-	return t.other.Modules
+	return t.Manager.Modules
 }
 
 func (t TraceModuleManager) GetConsensusVersion(module string) uint64 {
 	return t.GetVersionMap()[module]
 }
 
-func (t TraceModuleManager) ExportGenesisForModules(ctx sdk.Context, cdc codec.JSONCodec, modulesToExport []string) map[string]json.RawMessage {
-	return t.other.ExportGenesisForModules(ctx, cdc, modulesToExport)
-}
-
 func (t TraceModuleManager) ModuleNames() []string {
-	return t.other.ModuleNames()
+	return t.Manager.ModuleNames()
 }
 
-var _ module.Configurator = &TraceModuleConfigurator{}
-
-type TraceModuleConfigurator struct {
-	nested module.Configurator
-	cdc    codec.Codec
-}
-
-func NewTraceModuleConfigurator(cdc codec.Codec, nested module.Configurator) *TraceModuleConfigurator {
-	return &TraceModuleConfigurator{nested: nested, cdc: cdc}
-}
-
-func (t *TraceModuleConfigurator) MsgServer() grpc.Server {
-	return NewTracingGRPCServer(t.nested.MsgServer(), t.cdc)
-}
-
-func (t *TraceModuleConfigurator) QueryServer() grpc.Server {
-	if os.Getenv("no_tracing_query_service") != "" {
-		return t.nested.QueryServer()
+// NewTraceModuleConfigurator constructor
+func NewTraceModuleConfigurator(cdc codec.Codec, nested sdkmodule.Configurator) sdkmodule.Configurator {
+	msgServer := NewTracingGRPCServer(nested.MsgServer(), cdc)
+	if os.Getenv("no_tracing_msg_service") != "" {
+		msgServer = nested.MsgServer()
 	}
-	return NewTracingGRPCServer(t.nested.QueryServer(), t.cdc)
-}
-
-func (t *TraceModuleConfigurator) RegisterMigration(moduleName string, forVersion uint64, handler module.MigrationHandler) error {
-	return t.nested.RegisterMigration(moduleName, forVersion, handler)
+	queryServer := NewTracingGRPCServer(nested.QueryServer(), cdc)
+	if os.Getenv("no_tracing_query_service") != "" {
+		queryServer = nested.QueryServer()
+	}
+	return sdkmodule.NewConfigurator(cdc, msgServer, queryServer)
 }
 
 var _ grpc.Server = &TraceGRPCServer{}
@@ -267,7 +259,7 @@ func (t *TraceGRPCServer) traceHandler(fqMethod string, nestedHandler stdgrpc.Un
 		DoWithTracing(sdk.UnwrapSDKContext(goCtx3), "service", writesOnly,
 			func(workCtx sdk.Context, span opentracing.Span) error {
 				span.SetTag(tagSDKGRPCService, fqMethod)
-				result, err = nestedHandler(sdk.WrapSDKContext(workCtx), req2)
+				result, err = nestedHandler(workCtx, req2)
 				if err != nil {
 					return err
 				}

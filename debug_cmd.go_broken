@@ -1,0 +1,97 @@
+package tracing
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"path/filepath"
+	"strconv"
+
+	"github.com/cosmos/cosmos-sdk/client"
+
+	"github.com/spf13/cobra"
+
+	dbm "github.com/cometbft/cometbft-db"
+
+	cfg "github.com/cometbft/cometbft/config"
+	"github.com/cometbft/cometbft/libs/os"
+	"github.com/cometbft/cometbft/state"
+	"github.com/cometbft/cometbft/store"
+)
+
+func NewCmd() *cobra.Command {
+	txCmd := &cobra.Command{
+		Use:                        "debug",
+		Short:                      "debug tooling",
+		DisableFlagParsing:         true,
+		SuggestionsMinimumDistance: 2,
+		RunE:                       client.ValidateCmd,
+	}
+
+	txCmd.AddCommand(PrintBlockCmd())
+	return txCmd
+}
+
+func PrintBlockCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "print-block",
+		Short: "",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			height, err := strconv.ParseInt(args[0], 10, 64)
+			if err != nil {
+				return err
+			}
+
+			// use the parsed config to load the block and state store
+			blockStore, stateStore, err := LoadStateAndBlockStore(cfg.DefaultConfig())
+			if err != nil {
+				return err
+			}
+			defer func() {
+				_ = blockStore.Close()
+				_ = stateStore.Close()
+			}()
+			block := blockStore.LoadBlock(height)
+			if block == nil {
+				return errors.New("unknown height")
+			}
+			blockBz, err := json.Marshal(block)
+			if err != nil {
+				return err
+			}
+			cmd.Println(string(blockBz))
+			return nil
+		},
+	}
+}
+
+func LoadStateAndBlockStore(config *cfg.Config) (*store.BlockStore, state.Store, error) {
+	dbType := dbm.BackendType(config.DBBackend)
+
+	if !os.FileExists(filepath.Join(config.DBDir(), "blockstore.db")) {
+		return nil, nil, fmt.Errorf("no blockstore found in %v", config.DBDir())
+	}
+
+	// Get BlockStore
+	blockStoreDB, err := dbm.NewDB("blockstore", dbType, config.DBDir())
+	if err != nil {
+		return nil, nil, err
+	}
+	blockStore := store.NewBlockStore(blockStoreDB)
+
+	if !os.FileExists(filepath.Join(config.DBDir(), "state.db")) {
+		return nil, nil, fmt.Errorf("no statestore found in %v", config.DBDir())
+	}
+
+	// Get StateStore
+	stateDB, err := dbm.NewDB("state", dbType, config.DBDir())
+	if err != nil {
+		return nil, nil, err
+	}
+	stateStore := state.NewStore(stateDB, state.StoreOptions{
+		DiscardABCIResponses: config.Storage.DiscardABCIResponses,
+	})
+
+	return blockStore, stateStore, nil
+}

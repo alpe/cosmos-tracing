@@ -6,15 +6,15 @@ import (
 	"fmt"
 	"os"
 
-	icatypes "github.com/cosmos/ibc-go/v7/modules/apps/27-interchain-accounts/types"
+	icatypes "github.com/cosmos/ibc-go/v8/modules/apps/27-interchain-accounts/types"
 
 	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	capabilitytypes "github.com/cosmos/cosmos-sdk/x/capability/types"
-	transfertypes "github.com/cosmos/ibc-go/v7/modules/apps/transfer/types"
-	channeltypes "github.com/cosmos/ibc-go/v7/modules/core/04-channel/types"
-	porttypes "github.com/cosmos/ibc-go/v7/modules/core/05-port/types"
-	"github.com/cosmos/ibc-go/v7/modules/core/exported"
+	capabilitytypes "github.com/cosmos/ibc-go/modules/capability/types"
+	transfertypes "github.com/cosmos/ibc-go/v8/modules/apps/transfer/types"
+	channeltypes "github.com/cosmos/ibc-go/v8/modules/core/04-channel/types"
+	porttypes "github.com/cosmos/ibc-go/v8/modules/core/05-port/types"
+	"github.com/cosmos/ibc-go/v8/modules/core/exported"
 	"github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/log"
 )
@@ -183,10 +183,10 @@ func (t TraceIBCHandler) OnRecvPacket(rootCtx sdk.Context, packet channeltypes.P
 		}
 
 		orig := t.other.OnRecvPacket(rootCtx, packet, relayer)
-		if os.Getenv("tracing_ibcreceive_capture") != "" {
-			result = newCapturedAck(orig)
-		} else {
+		if os.Getenv("no_tracing_ibcreceive_capture") != "" {
 			result = orig
+		} else {
+			result = newCapturedAck(orig)
 		}
 		span.LogFields(safeLogField(logRawIBCACKType, fmt.Sprintf("%T", orig)))
 		if os.Getenv("no_tracing_ibcreceive_log") == "" {

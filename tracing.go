@@ -2,14 +2,13 @@ package tracing
 
 import (
 	"bytes"
-	"io"
-	"os"
 	"time"
 
-	"github.com/cometbft/cometbft/libs/log"
+	"cosmossdk.io/log"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
+	"github.com/rs/zerolog"
 )
 
 type storeLogSetting int
@@ -41,8 +40,8 @@ func DoWithTracingAsync(ctx sdk.Context, operationName string, logStore storeLog
 	}
 	em := sdk.NewEventManager()
 	var buf bytes.Buffer
-	logger := log.NewTMLogger(log.NewSyncWriter(io.MultiWriter(&buf, os.Stdout)))
 
+	logger := NewMultiLogger(ctx.Logger(), log.NewLogger(&buf, log.LevelOption(zerolog.DebugLevel)))
 	gm := NewTraceGasMeter(ctx.GasMeter())
 	if err := cb(ctx.WithContext(goCtx).WithEventManager(em).WithLogger(logger).WithGasMeter(gm), span); err != nil {
 		span.LogFields(otlog.Error(err))
@@ -68,6 +67,50 @@ func DoWithTracingAsync(ctx sdk.Context, operationName string, logStore storeLog
 			FinishTime: now,
 		})
 	}
+}
+
+type multiLogger struct {
+	loggers []log.Logger
+}
+
+func NewMultiLogger(loggers ...log.Logger) log.Logger {
+	return &multiLogger{loggers: loggers}
+}
+
+func (m multiLogger) Info(msg string, keyVals ...any) {
+	for _, l := range m.loggers {
+		l.Info(msg, keyVals)
+	}
+}
+
+func (m multiLogger) Warn(msg string, keyVals ...any) {
+	for _, l := range m.loggers {
+		l.Warn(msg, keyVals)
+	}
+}
+
+func (m multiLogger) Error(msg string, keyVals ...any) {
+	for _, l := range m.loggers {
+		l.Error(msg, keyVals)
+	}
+}
+
+func (m multiLogger) Debug(msg string, keyVals ...any) {
+	for _, l := range m.loggers {
+		l.Debug(msg, keyVals)
+	}
+}
+
+func (m multiLogger) With(keyVals ...any) log.Logger {
+	nl := make([]log.Logger, len(m.loggers))
+	for i, l := range m.loggers {
+		nl[i] = l.With(keyVals...)
+	}
+	return NewMultiLogger(nl...)
+}
+
+func (m multiLogger) Impl() any {
+	return m.loggers[0].Impl()
 }
 
 func safeLogField(key string, descr string) otlog.Field {
