@@ -27,31 +27,31 @@ func (m MockIBCModule) OnRecvPacket(ctx sdk.Context, packet channeltypes.Packet,
 	return m.OnRecvPacketFn(ctx, packet, relayer)
 }
 
-func (m MockIBCModule) OnChanOpenInit(ctx sdk.Context, order channeltypes.Order, connectionHops []string, portID string, channelID string, channelCap *capabilitytypes.Capability, counterparty channeltypes.Counterparty, version string) (string, error) {
+func (m MockIBCModule) OnChanOpenInit(ctx sdk.Context, order channeltypes.Order, connectionHops []string, portID string, channelID string, channelCap *capabilitytypes.Capability, counterparty channeltypes.Counterparty, version string) (string, error) { //nolint:revive
 	panic("implement me")
 }
 
-func (m MockIBCModule) OnChanOpenTry(ctx sdk.Context, order channeltypes.Order, connectionHops []string, portID, channelID string, channelCap *capabilitytypes.Capability, counterparty channeltypes.Counterparty, counterpartyVersion string) (version string, err error) {
+func (m MockIBCModule) OnChanOpenTry(ctx sdk.Context, order channeltypes.Order, connectionHops []string, portID, channelID string, channelCap *capabilitytypes.Capability, counterparty channeltypes.Counterparty, counterpartyVersion string) (version string, err error) { //nolint:revive
 	panic("implement me")
 }
 
-func (m MockIBCModule) OnChanOpenAck(ctx sdk.Context, portID, channelID string, counterpartyChannelID string, counterpartyVersion string) error {
+func (m MockIBCModule) OnChanOpenAck(ctx sdk.Context, portID, channelID string, counterpartyChannelID string, counterpartyVersion string) error { //nolint:revive
 	panic("implement me")
 }
 
-func (m MockIBCModule) OnChanOpenConfirm(ctx sdk.Context, portID, channelID string) error {
+func (m MockIBCModule) OnChanOpenConfirm(ctx sdk.Context, portID, channelID string) error { //nolint:revive
 	panic("implement me")
 }
 
-func (m MockIBCModule) OnChanCloseInit(ctx sdk.Context, portID, channelID string) error {
+func (m MockIBCModule) OnChanCloseInit(ctx sdk.Context, portID, channelID string) error { //nolint:revive
 	panic("implement me")
 }
 
-func (m MockIBCModule) OnChanCloseConfirm(ctx sdk.Context, portID, channelID string) error {
+func (m MockIBCModule) OnChanCloseConfirm(ctx sdk.Context, portID, channelID string) error { //nolint:revive
 	panic("implement me")
 }
 
-func (m MockIBCModule) OnTimeoutPacket(ctx sdk.Context, packet channeltypes.Packet, relayer sdk.AccAddress) error {
+func (m MockIBCModule) OnTimeoutPacket(ctx sdk.Context, packet channeltypes.Packet, relayer sdk.AccAddress) error { //nolint:revive
 	panic("implement me")
 }
 

@@ -9,7 +9,7 @@ import (
 )
 
 // TracingMultiStore Multistore that traces all operations
-type TracingMultiStore struct {
+type TracingMultiStore struct { //nolint:revive
 	storetypes.MultiStore
 	buf             bytes.Buffer
 	traceWritesOnly bool

@@ -51,14 +51,14 @@ func DoWithTracingAsync(ctx sdk.Context, operationName string, logStore storeLog
 	if logStore != nothing {
 		span.LogFields(safeLogField(logRawStoreIO, ms.getStoreDataLimited(MaxStoreTraced)))
 	}
-	span.LogFields(safeLogField(logRawEvents, toJson(em.Events())))
+	span.LogFields(safeLogField(logRawEvents, toJSON(em.Events())))
 	span.LogFields(safeLogField(logRawLoggerOut, cutLength(buf.String(), MaxSDKLogTraced)))
 
 	gasUsage := struct {
 		Application []GasTrace
 		Storage     []GasTrace
 	}{gm.traces, ms.traceGasMeter.traces}
-	span.LogFields(safeLogField(logGasUsage, toJson(gasUsage)))
+	span.LogFields(safeLogField(logGasUsage, toJSON(gasUsage)))
 
 	ctx.EventManager().EmitEvents(em.Events())
 	return func() {

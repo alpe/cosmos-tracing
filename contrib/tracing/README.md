@@ -9,8 +9,8 @@ docker run --name=jaeger -d -p 6831:6831/udp -p 16686:16686 jaegertracing/all-in
 
 [http://localhost:16686](http://localhost:16686)
 
-## Tgrade
-Run with `--twasm.open-tracing` flag
+## Wasmd example
+Run with `--cosmos-tracing.open-tracing` flag
 ```shell
-tgrade start --twasm.open-tracing
+wasmd start --cosmos-tracing.open-tracing
 ```

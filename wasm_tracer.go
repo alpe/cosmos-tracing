@@ -120,7 +120,7 @@ func (t TraceQueryPlugin) HandleQuery(rootCtx sdk.Context, caller sdk.AccAddress
 }
 
 func addTagsFromWasmQuery(span opentracing.Span, req wasmvmtypes.QueryRequest) {
-	span.LogFields(safeLogField(logRawWasmQuery, toJson(req)))
+	span.LogFields(safeLogField(logRawWasmQuery, toJSON(req)))
 
 	switch {
 	case req.Bank != nil:
@@ -177,9 +177,6 @@ func addTagsFromWasmQuery(span opentracing.Span, req wasmvmtypes.QueryRequest) {
 			span.SetTag(tagWasmQueryType, fmt.Sprintf("%T", req.Wasm.Raw))
 		case req.Staking != nil:
 			span.SetTag(tagWasmQueryCategory, fmt.Sprintf("%T", req.Staking))
-			switch {
-			case req.Staking.AllValidators != nil:
-			}
 		default:
 			span.SetTag(tagWasmQueryType, "unknown")
 		}
@@ -187,7 +184,7 @@ func addTagsFromWasmQuery(span opentracing.Span, req wasmvmtypes.QueryRequest) {
 }
 
 func addTagsFromWasmContractMsg(span opentracing.Span, msg wasmvmtypes.CosmosMsg) {
-	span.LogFields(safeLogField(logRawWasmMsg, toJson(msg)))
+	span.LogFields(safeLogField(logRawWasmMsg, toJSON(msg)))
 	switch {
 	case msg.Bank != nil:
 		span.SetTag(tagWasmMsgCategory, fmt.Sprintf("%T", msg.Bank))
@@ -269,11 +266,11 @@ func addTagsFromWasmEvents(span opentracing.Span, events sdk.Events) {
 			strings.HasPrefix(e.Type, wasmtypes.CustomContractEventPrefix) ||
 			e.Type == sdk.EventTypeMessage {
 			for _, a := range e.Attributes {
-				if string(a.Key) == wasmtypes.AttributeKeyContractAddr {
-					span.SetTag(tagContract, string(a.Value))
+				if a.Key == wasmtypes.AttributeKeyContractAddr {
+					span.SetTag(tagContract, a.Value)
 				}
-				if string(a.Key) == wasmtypes.AttributeKeyCodeID {
-					span.SetTag(tagCodeID, string(a.Value))
+				if a.Key == wasmtypes.AttributeKeyCodeID {
+					span.SetTag(tagCodeID, a.Value)
 				}
 			}
 		}
@@ -281,7 +278,7 @@ func addTagsFromWasmEvents(span opentracing.Span, events sdk.Events) {
 }
 
 // use with care as this can cause trouble with proto Any types
-func toJson(o any) string {
+func toJSON(o any) string {
 	if o == nil {
 		return "<nil>"
 	}

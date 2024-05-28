@@ -200,7 +200,7 @@ func findSigners(msg sdk.Msg) []string {
 }
 
 func logResultData(span opentracing.Span, data []byte) {
-	span.LogFields(safeLogField("raw_wasm_message_result", toJson(data)))
+	span.LogFields(safeLogField("raw_wasm_message_result", toJSON(data)))
 }
 
 func tryLogWasmMsg(span opentracing.Span, msg sdk.Msg) {

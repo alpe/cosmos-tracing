@@ -10,8 +10,8 @@ import (
 
 // Module init related flags
 const (
-	flagOpenTracingEnabled        = "twasm.open-tracing"
-	flagSimulationTracingDisabled = "twasm.disable-simulation-trace"
+	flagOpenTracingEnabled        = "cosmos-tracing.open-tracing"
+	flagSimulationTracingDisabled = "cosmos-tracing.disable-simulation-trace"
 )
 
 var (
@@ -21,7 +21,7 @@ var (
 
 // AddModuleInitFlags implements servertypes.ModuleInitFlags interface.
 func AddModuleInitFlags(startCmd *cobra.Command) {
-	startCmd.Flags().Bool(flagOpenTracingEnabled, false, "Enable opentracing agent")
+	startCmd.Flags().Bool(flagOpenTracingEnabled, false, "Capture traces and enable opentracing agent")
 	startCmd.Flags().Bool(flagSimulationTracingDisabled, false, "Do not trace simulations")
 }
 

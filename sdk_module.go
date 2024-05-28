@@ -8,7 +8,6 @@ import (
 	"os"
 
 	"cosmossdk.io/core/appmodule"
-
 	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cosmos/cosmos-sdk/codec"
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -39,6 +38,8 @@ type ModuleManager interface {
 	ModuleNames() []string
 	GetModules() map[string]any
 	GetConsensusVersion(module string) uint64
+	PreBlock(ctx sdk.Context) (*sdk.ResponsePreBlock, error)
+	ExportGenesisForModules(ctx sdk.Context, cdc codec.JSONCodec, modulesToExport []string) (map[string]json.RawMessage, error)
 }
 
 const (
@@ -46,6 +47,7 @@ const (
 	ABCIEndBlockOperationName      = "abci_end_block"
 	PrepareCheckStateOperationName = "prepare_check_state"
 	PrecommitOperationName         = "precommit"
+	PreBlockOperationName          = "preblock"
 	ModuleBeginBlockOperationName  = "module_begin_block"
 	ModuleEndBlockOperationName    = "module_end_block"
 )
@@ -68,6 +70,25 @@ func (t TraceModuleManager) Precommit(rootCtx sdk.Context) (err error) {
 	})
 }
 
+func (t TraceModuleManager) PreBlock(rootCtx sdk.Context) (*sdk.ResponsePreBlock, error) {
+	rootCtx = rootCtx.WithEventManager(sdk.NewEventManager())
+	paramsChanged := false
+
+	err := traceModuleCall[appmodule.HasPreBlocker](rootCtx, PreBlockOperationName, t, t.Manager.OrderPreBlockers, func(ctx sdk.Context, module appmodule.HasPreBlocker) error {
+		rsp, err := module.PreBlock(ctx)
+		if err != nil {
+			return err
+		}
+		if rsp.IsConsensusParamsChanged() {
+			paramsChanged = true
+		}
+		return nil
+	})
+	return &sdk.ResponsePreBlock{
+		ConsensusParamsChanged: paramsChanged,
+	}, err
+}
+
 func (t TraceModuleManager) PrepareCheckState(rootCtx sdk.Context) error {
 	return traceModuleCall[appmodule.HasPrepareCheckState](rootCtx, PrepareCheckStateOperationName, t, t.Manager.OrderPrepareCheckStaters, func(ctx sdk.Context, module appmodule.HasPrepareCheckState) error {
 		return module.PrepareCheckState(ctx)
@@ -79,7 +100,7 @@ func (t TraceModuleManager) RegisterServices(cfg sdkmodule.Configurator) error {
 }
 
 func (t TraceModuleManager) RunMigrations(rootCtx sdk.Context, cfg sdkmodule.Configurator, fromVM sdkmodule.VersionMap) (migrations sdkmodule.VersionMap, err error) {
-	DoWithTracing(rootCtx, BeginBlockOperationName, nothing, func(ctx sdk.Context, span opentracing.Span) error {
+	DoWithTracing(rootCtx, BeginBlockOperationName, nothing, func(ctx sdk.Context, _ opentracing.Span) error {
 		migrations, err = t.Manager.RunMigrations(ctx, cfg, fromVM)
 		return err
 	})
@@ -87,7 +108,7 @@ func (t TraceModuleManager) RunMigrations(rootCtx sdk.Context, cfg sdkmodule.Con
 }
 
 func traceModuleCall[T any](rootCtx sdk.Context, traceName string, t TraceModuleManager, order []string, f func(ctx sdk.Context, module T) error) (retErr error) {
-	DoWithTracing(rootCtx, "root_"+traceName, nothing, func(parentCtx sdk.Context, span opentracing.Span) error {
+	DoWithTracing(rootCtx, "root_"+traceName, nothing, func(parentCtx sdk.Context, _ opentracing.Span) error {
 		for _, moduleName := range order {
 			module, ok := t.Manager.Modules[moduleName].(T)
 			if !ok {
@@ -128,7 +149,7 @@ func (t TraceModuleManager) EndBlock(rootCtx sdk.Context) (sdk.EndBlock, error) 
 		validatorUpdates []abci.ValidatorUpdate
 		retErr           error
 	)
-	DoWithTracing(rootCtx, ABCIEndBlockOperationName, nothing, func(parentCtx sdk.Context, span opentracing.Span) error {
+	DoWithTracing(rootCtx, ABCIEndBlockOperationName, nothing, func(parentCtx sdk.Context, _ opentracing.Span) error {
 		for _, moduleName := range t.Manager.OrderEndBlockers {
 			if module, ok := t.Manager.Modules[moduleName].(appmodule.HasEndBlocker); ok {
 				DoWithTracing(parentCtx, "module_end_block", writesOnly, func(workCtx sdk.Context, span opentracing.Span) error {
@@ -149,7 +170,7 @@ func (t TraceModuleManager) EndBlock(rootCtx sdk.Context) (sdk.EndBlock, error) 
 					// only one module will update the validator set
 					if len(moduleValUpdates) > 0 {
 						span.SetTag(tagValsetUpdate, true)
-						span.LogFields(safeLogField(logValsetDiff, toJson(moduleValUpdates)))
+						span.LogFields(safeLogField(logValsetDiff, toJSON(moduleValUpdates)))
 
 						if len(validatorUpdates) > 0 {
 							retErr = errors.New("validator EndBlock updates already set by a previous module")
@@ -266,23 +287,24 @@ func (t *TraceGRPCServer) traceHandler(fqMethod string, nestedHandler stdgrpc.Un
 				if os.Getenv("no_tracing_service_result") != "" {
 					return nil
 				}
-				span.LogFields(safeLogField("raw_wasm_message_result", safeToJson(t.cdc, result)))
+				span.LogFields(safeLogField("raw_wasm_message_result", safeToJSON(t.cdc, result)))
 				return nil
 			})
 		return
 	}
 }
 
-func safeToJson(cdc codec.Codec, obj any) string {
-	var resJson string
+// encode to json without error or panic
+func safeToJSON(cdc codec.Codec, obj any) string {
+	var res string
 	if p, ok := obj.(proto.Message); ok {
 		if bz, err := cdc.MarshalJSON(p); err != nil {
-			resJson = string(bz)
+			res = string(bz)
 		} else {
-			resJson = fmt.Sprintf("marshal error: %s", err)
+			res = fmt.Sprintf("marshal error: %s", err)
 		}
 	} else {
-		resJson = toJson(obj)
+		res = toJSON(obj)
 	}
-	return resJson
+	return res
 }

@@ -19,7 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func createMinTestInput(t *testing.T) (sdk.Context, *codec.ProtoCodec, sdkstore.KVStoreService) {
+func createMinTestInput(t *testing.T) (sdk.Context, *codec.ProtoCodec, sdkstore.KVStoreService) { //nolint:unused
 	storeKey := storetypes.NewKVStoreKey("testing")
 	logger := log.NewNopLogger()
 	db := dbm.NewMemDB()

@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
+	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/stretchr/testify/assert"
 )
@@ -42,7 +42,7 @@ func TestIsTraceable(t *testing.T) {
 	for name, spec := range specs {
 		t.Run(name, func(t *testing.T) {
 			disableSimulations = spec.disabled
-			rootCtx := sdk.NewContext(nil, tmproto.Header{}, spec.check, nil)
+			rootCtx := sdk.NewContext(nil, cmtproto.Header{}, spec.check, nil)
 			ctx := WithSimulation(rootCtx, spec.sim)
 			got := IsTraceable(ctx)
 			assert.Equal(t, spec.exp, got)
