@@ -26,11 +26,10 @@ func TestDispatchWithTracingStore(t *testing.T) {
 	)
 	t.Cleanup(func() { tracerEnabled = false })
 
-	ctx, enc, storeKey := createMinTestInput(t)
+	ctx, enc, storeSvc := createMinTestInput(t)
 	xctx, commit := ctx.CacheContext()
 	mock := wasmtesting.MockMessageHandler{DispatchMsgFn: func(ctx sdk.Context, contractAddr sdk.AccAddress, contractIBCPortID string, msg wasmvmtypes.CosmosMsg) (events []sdk.Event, data [][]byte, err error) {
-		ctx.KVStore(storeKey).Set(myKey, myVal)
-		return nil, nil, nil
+		return nil, nil, storeSvc.OpenKVStore(ctx).Set(myKey, myVal)
 	}}
 	m := TraceMessageHandlerDecorator(enc)(&mock)
 

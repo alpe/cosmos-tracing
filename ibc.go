@@ -6,15 +6,14 @@ import (
 	"fmt"
 	"os"
 
-	icatypes "github.com/cosmos/ibc-go/v7/modules/apps/27-interchain-accounts/types"
-
 	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	capabilitytypes "github.com/cosmos/cosmos-sdk/x/capability/types"
-	transfertypes "github.com/cosmos/ibc-go/v7/modules/apps/transfer/types"
-	channeltypes "github.com/cosmos/ibc-go/v7/modules/core/04-channel/types"
-	porttypes "github.com/cosmos/ibc-go/v7/modules/core/05-port/types"
-	"github.com/cosmos/ibc-go/v7/modules/core/exported"
+	capabilitytypes "github.com/cosmos/ibc-go/modules/capability/types"
+	icatypes "github.com/cosmos/ibc-go/v8/modules/apps/27-interchain-accounts/types"
+	transfertypes "github.com/cosmos/ibc-go/v8/modules/apps/transfer/types"
+	channeltypes "github.com/cosmos/ibc-go/v8/modules/core/04-channel/types"
+	porttypes "github.com/cosmos/ibc-go/v8/modules/core/05-port/types"
+	"github.com/cosmos/ibc-go/v8/modules/core/exported"
 	"github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/log"
 )
@@ -169,7 +168,7 @@ func (t TraceIBCHandler) OnRecvPacket(rootCtx sdk.Context, packet channeltypes.P
 	if os.Getenv("no_tracing_ibcreceive") != "" {
 		return t.other.OnRecvPacket(rootCtx, packet, relayer)
 	}
-	DoWithTracing(rootCtx, "ibc_packet_recv", all, func(workCtx sdk.Context, span opentracing.Span) error {
+	DoWithTracing(rootCtx, "ibc_packet_recv", all, func(_ sdk.Context, span opentracing.Span) error {
 		span.SetTag(tagModule, t.moduleName).
 			SetTag(tagIBCSrcPort, packet.SourcePort).
 			SetTag(tagIBCDestPort, packet.DestinationPort).
@@ -247,16 +246,14 @@ func parsePacket(data []byte) (string, string) {
 			return p2.Memo, p2.String()
 		}
 		return "unidentified", ""
-	} else { // try protobuf
-		var p1 transfertypes.FungibleTokenPacketData
-		if err := p1.Unmarshal(data); err == nil {
-			return p1.Memo, p1.String()
-		}
-		var p2 icatypes.InterchainAccountPacketData
-		if err := p2.Unmarshal(data); err == nil {
-			return p2.Memo, p2.String()
-		}
-		return "unidentified", ""
-
 	}
+	var p1 transfertypes.FungibleTokenPacketData
+	if err := p1.Unmarshal(data); err == nil {
+		return p1.Memo, p1.String()
+	}
+	var p2 icatypes.InterchainAccountPacketData
+	if err := p2.Unmarshal(data); err == nil {
+		return p2.Memo, p2.String()
+	}
+	return "unidentified", ""
 }
