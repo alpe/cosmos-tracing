@@ -14,18 +14,19 @@ import (
 
 var _ wasmtypes.WasmEngine = TraceWasmVm{}
 
-type TraceWasmVm struct {
+type TraceWasmVm struct { //nolint:revive
 	other wasmtypes.WasmEngine
 }
 
-// NewTraceWasmVm constructor
-func NewTraceWasmVm(other wasmtypes.WasmEngine) wasmtypes.WasmEngine {
+// NewTraceWasmVM constructor
+func NewTraceWasmVM(other wasmtypes.WasmEngine) wasmtypes.WasmEngine {
 	if !tracerEnabled {
 		return other
 	}
 	return &TraceWasmVm{other: other}
 }
 
+// Deprecated: use StoreCode instead.
 func (t TraceWasmVm) Create(code cosmwasm.WasmCode) (cosmwasm.Checksum, error) {
 	return t.other.StoreCode(code)
 }
@@ -38,8 +39,8 @@ func (t TraceWasmVm) Instantiate(checksum cosmwasm.Checksum, env wasmvmtypes.Env
 	return wasmvmDoWithTracing(
 		"wasmvm_instantiate",
 		querier,
-		ContractJsonInputMsgRecorder(initMsg),
-		ContractVmResponseRecorder(),
+		ContractJSONInputMsgRecorder(initMsg),
+		ContractVMResponseRecorder(),
 		func() (resp *wasmvmtypes.Response, gasUsed uint64, err error) {
 			return t.other.Instantiate(checksum, env, info, initMsg, store, goapi, querier, gasMeter, gasLimit, deserCost)
 		},
@@ -50,8 +51,8 @@ func (t TraceWasmVm) Execute(checksum cosmwasm.Checksum, env wasmvmtypes.Env, in
 	return wasmvmDoWithTracing(
 		"wasmvm_execute",
 		querier,
-		ContractJsonInputMsgRecorder(executeMsg),
-		ContractVmResponseRecorder(),
+		ContractJSONInputMsgRecorder(executeMsg),
+		ContractVMResponseRecorder(),
 		func() (resp *wasmvmtypes.Response, gasUsed uint64, err error) {
 			return t.other.Execute(checksum, env, info, executeMsg, store, goapi, querier, gasMeter, gasLimit, deserCost)
 		},
@@ -60,7 +61,7 @@ func (t TraceWasmVm) Execute(checksum cosmwasm.Checksum, env wasmvmtypes.Env, in
 
 func (t TraceWasmVm) Query(checksum cosmwasm.Checksum, env wasmvmtypes.Env, queryMsg []byte, store cosmwasm.KVStore, goapi cosmwasm.GoAPI, querier cosmwasm.Querier, gasMeter cosmwasm.GasMeter, gasLimit uint64, deserCost wasmvmtypes.UFraction) (resp []byte, gasUsed uint64, err error) {
 	rootCtx := fetchCtx(querier)
-	DoWithTracing(rootCtx, "wasmvm_query", all, func(workCtx sdk.Context, span opentracing.Span) error {
+	DoWithTracing(rootCtx, "wasmvm_query", all, func(_ sdk.Context, span opentracing.Span) error {
 		span.LogFields(safeLogField(logRawQueryData, string(queryMsg)))
 		resp, gasUsed, err = t.other.Query(checksum, env, queryMsg, store, goapi, querier, gasMeter, gasLimit, deserCost)
 		if err == nil && resp != nil {
@@ -88,8 +89,8 @@ func (t TraceWasmVm) Migrate(checksum cosmwasm.Checksum, env wasmvmtypes.Env, mi
 	return wasmvmDoWithTracing(
 		"wasmvm_migrate",
 		querier,
-		ContractJsonInputMsgRecorder(migrateMsg),
-		ContractVmResponseRecorder(),
+		ContractJSONInputMsgRecorder(migrateMsg),
+		ContractVMResponseRecorder(),
 		func() (resp *wasmvmtypes.Response, gasUsed uint64, err error) {
 			return t.other.Migrate(checksum, env, migrateMsg, store, goapi, querier, gasMeter, gasLimit, deserCost)
 		},
@@ -100,8 +101,8 @@ func (t TraceWasmVm) Sudo(checksum cosmwasm.Checksum, env wasmvmtypes.Env, sudoM
 	return wasmvmDoWithTracing(
 		"wasmvm_sudo",
 		querier,
-		ContractJsonInputMsgRecorder(sudoMsg),
-		ContractVmResponseRecorder(),
+		ContractJSONInputMsgRecorder(sudoMsg),
+		ContractVMResponseRecorder(),
 		func() (resp *wasmvmtypes.Response, gasUsed uint64, err error) {
 			return t.other.Sudo(checksum, env, sudoMsg, store, goapi, querier, gasMeter, gasLimit, deserCost)
 		},
@@ -113,7 +114,7 @@ func (t TraceWasmVm) Reply(checksum cosmwasm.Checksum, env wasmvmtypes.Env, repl
 		"wasmvm_reply",
 		querier,
 		ContractGenericInputMsgRecorder(reply),
-		ContractVmResponseRecorder(),
+		ContractVMResponseRecorder(),
 		func() (resp *wasmvmtypes.Response, gasUsed uint64, err error) {
 			return t.other.Reply(checksum, env, reply, store, goapi, querier, gasMeter, gasLimit, deserCost)
 		},
@@ -220,7 +221,7 @@ func (t TraceWasmVm) StoreCodeUnchecked(code cosmwasm.WasmCode) (cosmwasm.Checks
 	return t.other.StoreCodeUnchecked(code)
 }
 
-func ContractJsonInputMsgRecorder(msg []byte) func(span opentracing.Span) {
+func ContractJSONInputMsgRecorder(msg []byte) func(span opentracing.Span) {
 	return func(span opentracing.Span) {
 		span.LogFields(safeLogField(logRawContractMsg, string(msg)))
 	}
@@ -228,18 +229,18 @@ func ContractJsonInputMsgRecorder(msg []byte) func(span opentracing.Span) {
 
 func ContractGenericInputMsgRecorder(obj interface{}) func(opentracing.Span) {
 	return func(span opentracing.Span) {
-		span.LogFields(safeLogField(logRawContractMsg, toJson(obj)))
+		span.LogFields(safeLogField(logRawContractMsg, toJSON(obj)))
 	}
 }
 
-func ContractVmResponseRecorder() func(opentracing.Span, *wasmvmtypes.Response) {
+func ContractVMResponseRecorder() func(opentracing.Span, *wasmvmtypes.Response) {
 	return func(span opentracing.Span, resp *wasmvmtypes.Response) {
-		span.LogFields(safeLogField(logRawResponseMsg, toJson(resp)))
+		span.LogFields(safeLogField(logRawResponseMsg, toJSON(resp)))
 		for i, v := range resp.Messages {
-			span.LogFields(safeLogField(fmt.Sprintf("%s_%d", logRawSubMsg, i), toJson(v)))
+			span.LogFields(safeLogField(fmt.Sprintf("%s_%d", logRawSubMsg, i), toJSON(v)))
 		}
 		span.LogFields(safeLogField(logRawResponseData, hex.EncodeToString(resp.Data)))
-		span.LogFields(safeLogField(logRawResponseEvents, toJson(resp.Events)))
+		span.LogFields(safeLogField(logRawResponseEvents, toJSON(resp.Events)))
 	}
 }
 
@@ -252,7 +253,7 @@ func ContractIBCChannelOpenResponseRecorder() func(opentracing.Span, *wasmvmtype
 // ContractGenericResponseRecorder logs response as json which gives a much better output than log.Object
 func ContractGenericResponseRecorder[T any]() func(opentracing.Span, *T) {
 	return func(span opentracing.Span, resp *T) {
-		span.LogFields(safeLogField(logRawResponseMsg, toJson(resp)))
+		span.LogFields(safeLogField(logRawResponseMsg, toJSON(resp)))
 	}
 }
 
@@ -270,7 +271,7 @@ func wasmvmDoWithTracing[T wasmvmtypes.Response | wasmvmtypes.IBCBasicResponse |
 		fmt.Println("+++++ not tracing wasmvm call due to missing root context")
 		return cb()
 	}
-	DoWithTracing(rootCtx, name, all, func(workCtx sdk.Context, span opentracing.Span) error {
+	DoWithTracing(rootCtx, name, all, func(_ sdk.Context, span opentracing.Span) error {
 		inputTracer(span)
 		resp, gasUsed, err = cb()
 		if err == nil && resp != nil {

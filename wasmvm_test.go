@@ -36,7 +36,7 @@ func TestIBCPacketAck(t *testing.T) {
 			mock := &wasmtesting.MockWasmEngine{IBCPacketAckFn: func(codeID cosmwasm.Checksum, env wasmvmtypes.Env, msg wasmvmtypes.IBCPacketAckMsg, store cosmwasm.KVStore, goapi cosmwasm.GoAPI, querier cosmwasm.Querier, gasMeter cosmwasm.GasMeter, gasLimit uint64, deserCost wasmvmtypes.UFraction) (*wasmvmtypes.IBCBasicResponse, uint64, error) {
 				return myRsp, myGas, nil
 			}}
-			en := NewTraceWasmVm(mock)
+			en := NewTraceWasmVM(mock)
 			msg := wasmvmtypes.IBCPacketAckMsg{}
 			querier := spec.querier(ctx)
 

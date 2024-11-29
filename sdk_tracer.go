@@ -5,13 +5,12 @@ import (
 	"strconv"
 
 	wasmtypes "github.com/CosmWasm/wasmd/x/wasm/types"
-	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cometbft/cometbft/crypto/tmhash"
 	cmttypes "github.com/cometbft/cometbft/libs/bytes"
 	"github.com/cosmos/cosmos-sdk/baseapp"
 	"github.com/cosmos/cosmos-sdk/codec"
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	govv1beta1 "github.com/cosmos/cosmos-sdk/x/gov/types/v1beta1"
+	govtypesv1beta1 "github.com/cosmos/cosmos-sdk/x/gov/types/v1beta1"
 	"github.com/gogo/protobuf/proto"
 	"github.com/opentracing/opentracing-go"
 )
@@ -32,36 +31,6 @@ const (
 	logRawLoggerOut = "logger_out"
 	logGasUsage     = "gas_usage"
 )
-
-// BeginBlockTracer is a decorator to the begin block callback that adds tracing functionality
-// Deprecated use TraceModuleManager instead to get more fine grained module data
-func BeginBlockTracer(other sdk.BeginBlocker) sdk.BeginBlocker {
-	if !tracerEnabled {
-		return other
-	}
-	return func(rootCtx sdk.Context, req abci.RequestBeginBlock) (rsp abci.ResponseBeginBlock) {
-		DoWithTracing(rootCtx, "old-abci_begin_block", all, func(workCtx sdk.Context, span opentracing.Span) error {
-			rsp = other(workCtx, req)
-			return nil
-		})
-		return
-	}
-}
-
-// EndBlockTracer is a decorator to the end block callback that adds tracing functionality
-// Deprecated use TraceModuleManager instead to get more fine grained module data
-func EndBlockTracer(other sdk.EndBlocker) sdk.EndBlocker {
-	if !tracerEnabled {
-		return other
-	}
-	return func(rootCtx sdk.Context, req abci.RequestEndBlock) (rsp abci.ResponseEndBlock) {
-		DoWithTracing(rootCtx, "old-abci_end_block", all, func(workCtx sdk.Context, span opentracing.Span) error {
-			rsp = other(workCtx, req)
-			return nil
-		})
-		return
-	}
-}
 
 // NewTraceAnteHandler decorates the ante handler with tracing functionality
 func NewTraceAnteHandler(other sdk.AnteHandler, cdc codec.Codec) sdk.AnteHandler {
@@ -87,11 +56,11 @@ func NewTraceAnteHandler(other sdk.AnteHandler, cdc codec.Codec) sdk.AnteHandler
 					jsonMsg = []byte(err.Error())
 				}
 				span.LogFields(safeLogField(logRawSDKMsg, cutLength(string(jsonMsg), MaxSDKMsgTraced)))
-				senders = append(senders, addrsToString(msg.GetSigners())...)
+				senders = deduplicateStrings(append(senders, findSigners(msg)...))
 			}
 			span.SetTag(tagTXHash, cmttypes.HexBytes(tmhash.Sum(rootCtx.TxBytes())).String())
 			span.SetTag(tagSDKMsgType, deduplicateStrings(msgs))
-			span.SetTag(tagSender, deduplicateStrings(senders))
+			span.SetTag(tagSender, senders)
 			span.SetTag(tagSimulation, strconv.FormatBool(simulate))
 
 			nextCtx, err = other(workCtx, tx, simulate)
@@ -101,10 +70,10 @@ func NewTraceAnteHandler(other sdk.AnteHandler, cdc codec.Codec) sdk.AnteHandler
 	}
 }
 
-func addrsToString(addrs []sdk.AccAddress) []string {
+func addrsToString[T []byte | sdk.AccAddress](addrs []T) []string {
 	r := make([]string, len(addrs))
 	for i, a := range addrs {
-		r[i] = a.String()
+		r[i] = sdk.AccAddress(a).String()
 	}
 	return r
 }
@@ -122,21 +91,21 @@ func deduplicateStrings(msgs []string) []string {
 	return r
 }
 
-var _ govv1beta1.Router = TraceGovRouter{}
+var _ govtypesv1beta1.Router = TraceGovRouter{}
 
 // TraceGovRouter is a decorator to the sdk gov router that adds call tracing functionality
 type TraceGovRouter struct {
-	other govv1beta1.Router
+	other govtypesv1beta1.Router
 }
 
-func NewTraceGovRouter(other govv1beta1.Router) govv1beta1.Router {
+func NewTraceGovRouter(other govtypesv1beta1.Router) govtypesv1beta1.Router {
 	if !tracerEnabled {
 		return other
 	}
 	return &TraceGovRouter{other: other}
 }
 
-func (t TraceGovRouter) AddRoute(r string, h govv1beta1.Handler) (rtr govv1beta1.Router) {
+func (t TraceGovRouter) AddRoute(r string, h govtypesv1beta1.Handler) (rtr govtypesv1beta1.Router) {
 	return NewTraceGovRouter(t.other.AddRoute(r, h))
 }
 
@@ -148,12 +117,12 @@ func (t TraceGovRouter) Seal() {
 	t.other.Seal()
 }
 
-func (t TraceGovRouter) GetRoute(path string) (h govv1beta1.Handler) {
+func (t TraceGovRouter) GetRoute(path string) (h govtypesv1beta1.Handler) {
 	realHandler := t.other.GetRoute(path)
 	if realHandler == nil {
 		return nil
 	}
-	return func(rootCtx sdk.Context, content govv1beta1.Content) (err error) {
+	return func(rootCtx sdk.Context, content govtypesv1beta1.Content) (err error) {
 		if !IsTraceable(rootCtx) {
 			return realHandler(rootCtx, content)
 		}
@@ -202,7 +171,7 @@ func (t TraceMessageRouter) Handler(msg sdk.Msg) baseapp.MsgServiceHandler {
 			}
 			span.SetTag(tagModule, moduleName).
 				SetTag(tagSDKMsgType, fmt.Sprintf("%T", msg)).
-				SetTag(tagSender, deduplicateStrings(addrsToString(msg.GetSigners())))
+				SetTag(tagSender, findSigners(msg))
 
 			tryLogWasmMsg(span, msg)
 
@@ -218,8 +187,20 @@ func (t TraceMessageRouter) Handler(msg sdk.Msg) baseapp.MsgServiceHandler {
 	}
 }
 
+func findSigners(msg sdk.Msg) []string {
+	m, ok := msg.(interface{ GetSigners() ([][]byte, error) })
+	if !ok {
+		return nil
+	}
+	signers, err := m.GetSigners()
+	if err != nil {
+		return nil
+	}
+	return addrsToString(signers)
+}
+
 func logResultData(span opentracing.Span, data []byte) {
-	span.LogFields(safeLogField("raw_wasm_message_result", toJson(data)))
+	span.LogFields(safeLogField("raw_wasm_message_result", toJSON(data)))
 }
 
 func tryLogWasmMsg(span opentracing.Span, msg sdk.Msg) {

@@ -1,0 +1,35 @@
+run:
+  timeout: 5m
+
+linters-settings:
+  lll:
+    line-length: 200
+  misspell:
+    locale: US
+  staticcheck:
+    go: "1.22"
+
+linters:
+  disable-all: true
+  enable:
+    - errcheck
+    - errorlint
+    - exportloopref
+    - forcetypeassert
+    - gci
+    - gocritic
+    - goconst
+    - gofmt
+    - gofumpt
+    - goimports
+    - gosec
+    - gosimple
+    - govet
+    - ineffassign
+    - misspell
+    - revive
+    - staticcheck
+    - typecheck
+    - unconvert
+    - unused
+    - whitespace

@@ -63,7 +63,7 @@ I am going to provide an example for Cosmos-SDK v0.50 but I can not promise long
 
 ## License & Copyright
 ```
-Copyright 2021-2024 Alex Peters 
+Copyright 2021-2024 Alexander Peters
 Copyright 2021-2023 Confio GmbH
 
 Licensed under the Apache License, Version 2.0 (the "License");
