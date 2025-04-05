@@ -3,8 +3,7 @@ package tracing
 import (
 	"fmt"
 
-	storetypes "github.com/cosmos/cosmos-sdk/store/types"
-	sdk "github.com/cosmos/cosmos-sdk/types"
+	storetypes "cosmossdk.io/store/types"
 )
 
 type GasTrace struct {
@@ -23,16 +22,16 @@ func (g GasTrace) String() string {
 	return fmt.Sprintf("%d, %s, refund: %v", g.Gas, g.Descriptor, g.Refund)
 }
 
-var _ sdk.GasMeter = &TraceGasMeter{}
+var _ storetypes.GasMeter = &TraceGasMeter{}
 
-// TraceGasMeter is a decorator to the sdk GasMeter that catuptures all gas usage and refunds
+// TraceGasMeter is a decorator to the sdk GasMeter that captures all gas usage and refunds
 type TraceGasMeter struct {
-	o      sdk.GasMeter
+	o      storetypes.GasMeter
 	traces []GasTrace
 }
 
 // NewTraceGasMeter constructor
-func NewTraceGasMeter(o sdk.GasMeter) *TraceGasMeter {
+func NewTraceGasMeter(o storetypes.GasMeter) *TraceGasMeter {
 	return &TraceGasMeter{o: o, traces: make([]GasTrace, 0)}
 }
 

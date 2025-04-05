@@ -7,14 +7,12 @@ import (
 
 	"github.com/CosmWasm/wasmd/x/wasm/types"
 	"github.com/cometbft/cometbft/libs/rand"
-	"github.com/cosmos/cosmos-sdk/types/address"
-	"github.com/cosmos/ibc-go/v7/modules/core/exported"
-
-	"github.com/opentracing/opentracing-go/mocktracer"
-
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	channeltypes "github.com/cosmos/ibc-go/v7/modules/core/04-channel/types"
+	"github.com/cosmos/cosmos-sdk/types/address"
+	channeltypes "github.com/cosmos/ibc-go/v8/modules/core/04-channel/types"
+	"github.com/cosmos/ibc-go/v8/modules/core/exported"
 	"github.com/opentracing/opentracing-go"
+	"github.com/opentracing/opentracing-go/mocktracer"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

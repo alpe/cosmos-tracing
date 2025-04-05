@@ -3,34 +3,33 @@ package tracing
 import (
 	"bytes"
 
-	"github.com/cosmos/cosmos-sdk/store/gaskv"
-	"github.com/cosmos/cosmos-sdk/store/tracekv"
-	storetypes "github.com/cosmos/cosmos-sdk/store/types"
-	sdk "github.com/cosmos/cosmos-sdk/types"
+	"cosmossdk.io/store/gaskv"
+	"cosmossdk.io/store/tracekv"
+	storetypes "cosmossdk.io/store/types"
 )
 
 // TracingMultiStore Multistore that traces all operations
-type TracingMultiStore struct {
-	sdk.MultiStore
+type TracingMultiStore struct { //nolint:revive
+	storetypes.MultiStore
 	buf             bytes.Buffer
 	traceWritesOnly bool
 	traceGasMeter   *TraceGasMeter
 }
 
 // NewTracingMultiStore constructor
-func NewTracingMultiStore(store sdk.MultiStore, traceWritesOnly bool) *TracingMultiStore {
+func NewTracingMultiStore(store storetypes.MultiStore, traceWritesOnly bool) *TracingMultiStore {
 	return &TracingMultiStore{
 		MultiStore:      store,
 		traceWritesOnly: traceWritesOnly,
-		traceGasMeter:   NewTraceGasMeter(sdk.NewInfiniteGasMeter()),
+		traceGasMeter:   NewTraceGasMeter(storetypes.NewInfiniteGasMeter()),
 	}
 }
 
-func (t *TracingMultiStore) GetStore(k storetypes.StoreKey) sdk.Store {
+func (t *TracingMultiStore) GetStore(k storetypes.StoreKey) storetypes.Store {
 	return tracekv.NewStore(t.MultiStore.GetKVStore(k), &t.buf, nil)
 }
 
-func (t *TracingMultiStore) GetKVStore(k storetypes.StoreKey) sdk.KVStore {
+func (t *TracingMultiStore) GetKVStore(k storetypes.StoreKey) storetypes.KVStore {
 	parentStore := t.MultiStore.GetKVStore(k)
 	// wrap with gaskv to track gas usage
 	parentStore = gaskv.NewStore(parentStore, t.traceGasMeter, storetypes.KVGasConfig())
@@ -42,16 +41,16 @@ func (t *TracingMultiStore) GetKVStore(k storetypes.StoreKey) sdk.KVStore {
 	return NewTraceWritesOnlyStore(parentStore, traceStore)
 }
 
-var _ sdk.KVStore = &TraceWritesKVStore{}
+var _ storetypes.KVStore = &TraceWritesKVStore{}
 
 // TraceWritesKVStore decorator to log only write operations
 type TraceWritesKVStore struct {
-	parent sdk.KVStore
+	parent storetypes.KVStore
 	*tracekv.Store
 }
 
 // NewTraceWritesOnlyStore constructor
-func NewTraceWritesOnlyStore(parent sdk.KVStore, traceStore *tracekv.Store) *TraceWritesKVStore {
+func NewTraceWritesOnlyStore(parent storetypes.KVStore, traceStore *tracekv.Store) *TraceWritesKVStore {
 	return &TraceWritesKVStore{parent: parent, Store: traceStore}
 }
 
